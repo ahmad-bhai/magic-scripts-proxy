@@ -1,45 +1,48 @@
-const axios = require('axios');
+const crypto = require('crypto');
+const net = require('net');
 
-module.exports = async (req, res) => {
-    // CORS Headers taake aap kisi bhi website se isko call kar sakein
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+// Configuration
+const PORT = 443; // Port 443 use karein taake lagay ke aam website ka traffic hai
+const PASSWORD = "Royal_Quotex_Academy_Secret_2026"; // Aapka password
+const METHOD = "aes-256-gcm"; // Dunya ka sab se secure aur fast encryption method
 
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
+const KEY = crypto.scryptSync(PASSWORD, 'shadowsocks', 32);
 
-    // Client se target path lena (e.g., /api/proxy?url=https://api.telegram.org/botXYZ/getMe)
-    const { url } = req.query;
+/**
+ * Custom High-Speed Proxy Server for Telegram Application
+ */
+const server = net.createServer((clientSocket) => {
+    let isHeaderParsed = false;
+    let cipher, decipher;
 
-    if (!url) {
-        return res.status(400).json({
-            success: false,
-            message: "RQA Proxy: Missing 'url' parameter. Example: /api/proxy?url=https://api.telegram.org"
-        });
-    }
+    clientSocket.on('data', (data) => {
+        try {
+            if (!isHeaderParsed) {
+                // Initial Handshake and Decryption Setup
+                const salt = data.slice(0, 32);
+                const decipherKey = crypto.hkdfSync('sha1', KEY, salt, 'ss-subkey', 32);
+                decipher = crypto.createDecipheriv(METHOD, decipherKey, Buffer.alloc(12));
+                
+                isHeaderParsed = true;
+                
+                // Target Server (Telegram Server) Connection Establishment
+                const remoteSocket = net.connect(443, '149.154.167.50', () => {
+                    clientSocket.pipe(remoteSocket);
+                    remoteSocket.pipe(clientSocket);
+                });
 
-    try {
-        // Forwarding the request to the target url via Vercel's unblocked network
-        const response = await axios({
-            method: req.method,
-            url: decodeURIComponent(url),
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Accept': '*/*'
-            },
-            data: req.body,
-            validateStatus: () => true
-        });
+                remoteSocket.on('error', () => clientSocket.destroy());
+            }
+        } catch (err) {
+            clientSocket.destroy();
+        }
+    });
 
-        res.status(response.status).send(response.data);
+    clientSocket.on('error', () => {});
+});
 
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: "Tunnel routing failed",
-            error: error.message
-        });
-    }
-};
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`====================================================`);
+    console.log(` RQA LIFETIME APP PROXY IS ONLINE ON PORT: ${PORT} `);
+    console.log(`====================================================`);
+});
