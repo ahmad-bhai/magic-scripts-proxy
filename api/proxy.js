@@ -1,37 +1,45 @@
-const socksv5 = require('socksv5');
+const axios = require('axios');
 
-// Proxy Configuration
-const PORT = process.env.PORT || 443; // Port 443 (HTTPS) use karein taake Pakistan mein block na ho
-const USERNAME = "rqa_admin";         // Aapka custom username
-const PASSWORD = "RQA_Secure_Pass_2026"; // Aapka custom password
+module.exports = async (req, res) => {
+    // CORS Headers taake aap kisi bhi website se isko call kar sakein
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
-/**
- * Universal SOCKS5 Proxy Server
- * Yeh server direct Telegram app ke network payloads ko route karega.
- */
-const server = socksv5.createServer((info, accept, deny) => {
-    // Handling direct connection architecture
-    accept();
-});
-
-// User Authentication Layer Integration
-server.useAuth(socksv5.auth.UserPassword((user, pass, cb) => {
-    if (user === USERNAME && pass === PASSWORD) {
-        return cb(true); // Access granted
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
     }
-    console.log(`Unauthorized connection attempt blocked from: ${user}`);
-    cb(false); // Access denied
-}));
 
-server.listen(PORT, '0.0.0.0', () => {
-    console.log(`==================================================`);
-    console.log(` ROYAL QUOTEX ACADEMY - Lifetime Proxy System    `);
-    console.log(`==================================================`);
-    console.log(`SOCKS5 Proxy Server is online and running on port: ${PORT}`);
-    console.log(`Authentication Enabled: Username: ${USERNAME}`);
-    console.log(`==================================================`);
-});
+    // Client se target path lena (e.g., /api/proxy?url=https://api.telegram.org/botXYZ/getMe)
+    const { url } = req.query;
 
-server.on('error', (err) => {
-    console.error('Proxy Server Runtime Error:', err.message);
-});
+    if (!url) {
+        return res.status(400).json({
+            success: false,
+            message: "RQA Proxy: Missing 'url' parameter. Example: /api/proxy?url=https://api.telegram.org"
+        });
+    }
+
+    try {
+        // Forwarding the request to the target url via Vercel's unblocked network
+        const response = await axios({
+            method: req.method,
+            url: decodeURIComponent(url),
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': '*/*'
+            },
+            data: req.body,
+            validateStatus: () => true
+        });
+
+        res.status(response.status).send(response.data);
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Tunnel routing failed",
+            error: error.message
+        });
+    }
+};
